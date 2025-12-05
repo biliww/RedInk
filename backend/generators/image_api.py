@@ -52,6 +52,8 @@ class ImageApiGenerator(ImageGeneratorBase):
         if not endpoint_type.startswith('/'):
             endpoint_type = '/' + endpoint_type
         self.endpoint_type = endpoint_type
+        # 新增：是否启用 Chat API 流式
+        self.enable_stream_chat = config.get('enable_stream_chat', True)
 
         logger.info(f"ImageApiGenerator 初始化完成: base_url={self.base_url}, model={self.model}, endpoint={self.endpoint_type}")
 
@@ -110,7 +112,8 @@ class ImageApiGenerator(ImageGeneratorBase):
 
         # 根据端点类型选择不同的生成方式
         if 'chat' in self.endpoint_type or 'completions' in self.endpoint_type:
-            return self._generate_via_chat_api(prompt, aspect_ratio, model, reference_image, reference_images)
+            # 传递 kwargs 给 chat 实现，支持动态开关 stream
+            return self._generate_via_chat_api(prompt, aspect_ratio, model, reference_image, reference_images, **kwargs)
         else:
             return self._generate_via_images_api(prompt, aspect_ratio, model, reference_image, reference_images)
 
@@ -220,10 +223,12 @@ class ImageApiGenerator(ImageGeneratorBase):
         aspect_ratio: str,
         model: str,
         reference_image: Optional[bytes] = None,
-        reference_images: Optional[List[bytes]] = None
+        reference_images: Optional[List[bytes]] = None,
+        **kwargs
     ) -> bytes:
-        """通过 /v1/chat/completions 端点生成图片（如即梦 API）"""
+        """通过 /v1/chat/completions 端点生成图片（如即梦 API），支持流式"""
         import re
+        import json
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -262,11 +267,20 @@ class ImageApiGenerator(ImageGeneratorBase):
             "max_tokens": 4096,
             "temperature": 1.0
         }
-
         api_url = f"{self.base_url}{self.endpoint_type}"
         logger.info(f"Chat API 生成图片: {api_url}, model={model}")
 
-        response = requests.post(api_url, headers=headers, json=payload, timeout=300)
+        # 新增：流式控制
+        use_stream = kwargs.get('stream', self.enable_stream_chat)
+        if use_stream:
+            payload["stream"] = True
+            try:
+                response = requests.post(api_url, headers=headers, json=payload, timeout=300, stream=True)
+            except Exception as e:
+                logger.warning(f"流式连接失败，回退非流式: {str(e)[:200]}")
+                use_stream = False
+        else:
+            response = requests.post(api_url, headers=headers, json=payload, timeout=300)
 
         if response.status_code != 200:
             error_detail = response.text[:500]
@@ -296,6 +310,89 @@ class ImageApiGenerator(ImageGeneratorBase):
                     f"【模型】{model}"
                 )
 
+        # 流式增量解析
+        if use_stream:
+            logger.debug("开始流式接收 Chat API 响应")
+            accumulated_text = ""
+            try:
+                for raw_line in response.iter_lines(decode_unicode=True):
+                    if not raw_line:
+                        continue
+                    line = raw_line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    # 兼容可能返回非 JSON 片段
+                    try:
+                        chunk = json.loads(data_str)
+                    except Exception:
+                        # 如果是纯文本增量
+                        accumulated_text += data_str
+                        logger.debug(f"  Chat 图片流式API 响应: {accumulated_text[:500]}")
+                        # 尝试解析图片链接或 data URL
+                        if accumulated_text.startswith("http://") or accumulated_text.startswith("https://"):
+                            logger.info("流式检测到图片 URL")
+                            return self._download_image(accumulated_text.strip())
+                        if accumulated_text.startswith("data:image"):
+                            logger.info("流式检测到 Base64 图片数据")
+                            base64_data = accumulated_text.split(",", 1)[1]
+                            return base64.b64decode(base64_data)
+                        # Markdown 图片
+                        urls = re.findall(r'!\[.*?\]\((https?://[^\s\)]+)\)', accumulated_text)
+                        if urls:
+                            logger.info("流式从 Markdown 提取图片 URL")
+                            return self._download_image(urls[0])
+                        base64_urls = re.findall(r'!\[.*?\]\((data:image\/[^;]+;base64,[^\s\)]+)\)', accumulated_text)
+                        if base64_urls:
+                            logger.info("流式从 Markdown 提取 Base64 图片数据")
+                            base64_data = base64_urls[0].split(",", 1)[1]
+                            return base64.b64decode(base64_data)
+                        continue
+
+                    # 解析标准 OpenAI 格式的增量
+                    # 可能为 {"choices":[{"delta":{"content":"..."}}]} 或 vendor 自定义
+                    content_delta = ""
+                    try:
+                        choices = chunk.get("choices") or []
+                        if choices:
+                            ch0 = choices[0]
+                            # OpenAI 风格
+                            if "delta" in ch0 and isinstance(ch0["delta"], dict):
+                                content_delta = ch0["delta"].get("content", "") or ""
+                            # 有的供应商直接在 message 中返回
+                            elif "message" in ch0 and isinstance(ch0["message"], dict):
+                                content_delta = ch0["message"].get("content", "") or ""
+                    except Exception:
+                        pass
+
+                    if content_delta:
+                        accumulated_text += content_delta
+                        # 增量匹配
+                        if accumulated_text.startswith("http://") or accumulated_text.startswith("https://"):
+                            logger.info("流式检测到图片 URL")
+                            return self._download_image(accumulated_text.strip())
+                        if accumulated_text.startswith("data:image"):
+                            logger.info("流式检测到 Base64 图片数据")
+                            base64_data = accumulated_text.split(",", 1)[1]
+                            return base64.b64decode(base64_data)
+                        urls = re.findall(r'!\[.*?\]\((https?://[^\s\)]+)\)', accumulated_text)
+                        if urls:
+                            logger.info("流式从 Markdown 提取图片 URL")
+                            return self._download_image(urls[0])
+                        base64_urls = re.findall(r'!\[.*?\]\((data:image\/[^;]+;base64,[^\s\)]+)\)', accumulated_text)
+                        if base64_urls:
+                            logger.info("流式从 Markdown 提取 Base64 图片数据")
+                            base64_data = base64_urls[0].split(",", 1)[1]
+                            return base64.b64decode(base64_data)
+
+                # 流式结束但未提取到图片，回退非流式解析
+                logger.debug("流式结束，未检测到图片数据，回退非流式解析")
+            except Exception as e:
+                logger.warning(f"流式解析异常，回退非流式: {str(e)[:200]}")
+
+        # 原有的非流式解析逻辑
         result = response.json()
         logger.debug(f"Chat API 响应: {str(result)[:500]}")
 

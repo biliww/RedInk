@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 class Config:
     DEBUG = True
     HOST = '0.0.0.0'
-    PORT = 12398
+    # PORT = 12398
+    PORT = 12399
     CORS_ORIGINS = ['http://localhost:5173', 'http://localhost:3000']
     OUTPUT_DIR = 'output'
 

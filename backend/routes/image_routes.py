@@ -84,6 +84,8 @@ def create_image_blueprint():
                     # 格式化为 SSE 格式
                     yield f"event: {event_type}\n"
                     yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
+                    logger.debug(f"图片生成事件type: {event_type}"
+                                 f"data={event_data}")
 
             return Response(
                 generate(),

@@ -160,6 +160,8 @@ class OutlineService:
                 images=images
             )
 
+            logger.debug(f"API 返回文本内容: "
+                         f"{outline_text} ")
             logger.debug(f"API 返回文本长度: {len(outline_text)} 字符")
             pages = self._parse_outline(outline_text)
             logger.info(f"大纲解析完成，共 {len(pages)} 页")
