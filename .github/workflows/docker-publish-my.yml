@@ -10,6 +10,7 @@ on:
 
 env:
   DOCKER_USERNAME: 843145936@qq.com
+  image_name: biliw
   IMAGE_NAME: redink
 
 
@@ -34,7 +35,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.image_name }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
