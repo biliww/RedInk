@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_USERNAME: biliww
+  DOCKER_USERNAME: 843145936@qq.com
   IMAGE_NAME: redink
 
 
