@@ -26,3 +26,6 @@ pnpm dev
 访问: http://localhost:5173
 
 ---
+
+
+# docker镜像打包
