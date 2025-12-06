@@ -125,6 +125,10 @@ async function handleGenerate() {
   padding-top: 10px;
   position: relative;
   z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 /* Hero Section */
@@ -162,6 +166,11 @@ async function handleGenerate() {
   margin-bottom: 24px;
   line-height: 1.6;
   letter-spacing: 0.5px;
+}
+
+.page-title {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
 }
 
 .page-subtitle {

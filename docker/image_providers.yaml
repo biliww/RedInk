@@ -6,5 +6,7 @@ providers:
     api_key: ""
     base_url: https://api.openai.com/v1
     high_concurrency: false
+    endpoint_type: /v1/chat/completions
     model: dall-e-3
     type: image_api
+    short_prompt: false
