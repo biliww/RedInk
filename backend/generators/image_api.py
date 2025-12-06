@@ -139,6 +139,8 @@ class ImageApiGenerator(ImageGeneratorBase):
             "image_size": self.image_size
         }
 
+        logger.info(f"准备发送图片生成请求: \nAPI地址: {self.base_url}{self.endpoint_type}\n请求头: {headers}\n请求体: {payload}")
+
         # 收集所有参考图片
         all_reference_images = []
         if reference_images and len(reference_images) > 0:
@@ -174,6 +176,7 @@ class ImageApiGenerator(ImageGeneratorBase):
         api_url = f"{self.base_url}{self.endpoint_type}"
         logger.debug(f"  发送请求到: {api_url}")
         response = requests.post(api_url, headers=headers, json=payload, timeout=300)
+        logger.info(f"收到API响应: 状态码={response.status_code}, 响应内容={response.text[:1000]}")
 
         if response.status_code != 200:
             error_detail = response.text[:500]
@@ -235,6 +238,8 @@ class ImageApiGenerator(ImageGeneratorBase):
             "Content-Type": "application/json"
         }
 
+        logger.info(f"准备发送Chat API图片生成请求: \nAPI地址: {self.base_url}{self.endpoint_type}\n模型: {model}\n提示词: {prompt}\n参考图片数量: {len(reference_images) if reference_images else 0}")
+
         # 构建用户消息内容
         user_content: Any = prompt
 
@@ -269,6 +274,7 @@ class ImageApiGenerator(ImageGeneratorBase):
         }
         api_url = f"{self.base_url}{self.endpoint_type}"
         logger.info(f"Chat API 生成图片: {api_url}, model={model}")
+        logger.info(f"完整请求负载: {payload}")
 
         # 新增：流式控制
         use_stream = kwargs.get('stream', self.enable_stream_chat)
@@ -281,6 +287,8 @@ class ImageApiGenerator(ImageGeneratorBase):
                 use_stream = False
         else:
             response = requests.post(api_url, headers=headers, json=payload, timeout=300)
+        
+        logger.info(f"收到Chat API响应: 状态码={response.status_code}, 响应头={dict(response.headers)}")
 
         if response.status_code != 200:
             error_detail = response.text[:500]
